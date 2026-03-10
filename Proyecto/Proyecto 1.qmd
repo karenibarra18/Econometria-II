@@ -1,0 +1,136 @@
+---
+title: "Análisis Econométrico de los Determinantes del Crimen Organizado Global (2021-2025)"
+author: "Valtierra Ibarra Karen Lizbeth"
+format: html
+editor: visual
+---
+
+```{r}
+library(forecast)
+library(dplyr)
+```
+
+```{r}
+datos <- read_excel("global_oc_index.xlsx")
+
+df_global <- datos %>%
+  group_by(Year) %>%
+  summarise(criminality = mean(Criminality_avg, na.rm = TRUE)) %>%
+  arrange(Year)
+
+criminality_ts <- ts(df_global$criminality, start = 2021, frequency = 1)
+
+log_crim_ts <- log(criminality_ts)
+
+diff_log_crim_ts <- diff(log_crim_ts)
+```
+
+```{r}
+# Agregamos a nivel global para tener una serie de tiempo representativa
+df_global <- datos %>%
+  group_by(Year) %>%
+  summarise(criminality = mean(Criminality_avg, na.rm = TRUE))
+
+# Creamos la serie de tiempo (frecuencia 0.5 ya que es cada 2 años)
+# O bien, tratamos como frecuencia 1 para facilitar el modelado
+criminality_ts <- ts(df_global$criminality, start = 2021, frequency = 0.5)
+
+# Logaritmo y diferencia (como en tu ejemplo diff_log_pib_ts)
+log_crim_ts <- log(criminality_ts)
+diff_log_crim_ts <- diff(log_crim_ts)
+```
+
+```{r}
+# Boxplot
+df_plot <- datos %>%
+  select(Criminality_avg, Continent) %>%
+  mutate(Continent = as.factor(Continent))
+
+boxplot(Criminality_avg ~ Continent,
+        data = df_plot,
+        col = "lightblue",
+        main = "Distribución de Criminalidad por Continente",
+        ylab = "Índice de Criminalidad",
+        las = 2) 
+```
+
+```{r}
+library(forecast)
+
+# Modelo ARIMA
+fit <- Arima(log_crim_ts, order = c(1,0,0))
+
+summary(fit)
+
+# Residuos
+plot(residuals(fit),
+     xlab = "Tiempo",
+     ylab = "U_t",
+     main = "Componente estocástico (Residuos del Modelo)")
+```
+
+```{r}
+# Pronóstico
+h_steps <- 2 # Proyectamos 2 periodos a futuro (2027 y 2029)
+
+fc <- forecast(fit, h = h_steps)
+
+# Inicializamos vectores para guardar la reversión del logaritmo
+indices_pred <- numeric(h_steps)
+lowers_ <- numeric(h_steps)
+uppers_ <- numeric(h_steps)
+
+# Tomamos el último valor conocido del índice en escala logarítmica
+# En tu código usas un valor fijo (17.05), aquí usamos el último dato real
+last_val_log <- tail(log_crim_ts, 1)
+
+for (i in 1:h_steps){
+  # Nota: Si el modelo fue sobre la serie en niveles log, sumamos la predicción
+  # siguiendo tu lógica de acumulado:
+  val_log <- fc$mean[i]
+  
+  indices_pred[i] <- exp(val_log)
+  lowers_[i] <- exp(fc$lower[i, 2]) # 95% IC
+  uppers_[i] <- exp(fc$upper[i, 2]) # 95% IC
+}
+
+print(indices_pred)
+```
+
+```{r}
+# Gráfico con intervalo de confianza
+plot(indices_pred, type="l",
+     ylim = range(c(lowers_, uppers_, tail(df_global$criminality, 1))),
+     ylab="Índice de Criminalidad", 
+     xlab="Horizonte de Pronóstico",
+     main="Pronóstico de Criminalidad Global con IC",
+     col="blue", lwd=2)
+
+# Crear el polígono de confianza (sombreado)
+polygon(
+  c(1:h_steps, rev(1:h_steps)),
+  c(lowers_, rev(uppers_)),
+  col=rgb(0,0,0,0.1), # Gris transparente
+  border=NA
+)
+
+# Añadir línea de puntos para mayor claridad
+points(indices_pred, pch=19, col="blue")
+```
+
+```{r}
+# Comparación
+auto_model <- auto.arima(log_crim_ts)
+
+my_residuals <- residuals(fit)
+auto_residuals <- residuals(auto_model)
+
+plot(auto_residuals, main = "Comparación de Modelos", col = "red", lwd=1)
+lines(my_residuals, col = "blue", lwd=1)
+legend("bottomleft",
+       legend = c("Mi ARIMA", "Auto ARIMA"),
+       col = c("blue", "red"),
+       lty = 1, bty = "n")
+```
+
+## 
