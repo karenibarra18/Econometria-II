@@ -1,0 +1,203 @@
+---
+title: "Proyecto 2"
+author: "Valtierra Ibarra Karen Lizbeth"
+format: html
+editor: visual
+---
+
+## Proyecto 2
+
+```{r}
+library(tseries)
+library(readxl)
+library(vars)
+library(zoo)
+library(urca)
+library(dplyr)
+library(lmtest)
+library(readr)
+```
+
+```{r}
+DATA <- read_excel("~/Econometria 2/Proyecto 2/global_fuel_prices_2020_2026.xlsx")
+head(DATA)
+```
+
+```{r}
+#Variable donde guardo los precios del petroleo (Brent) al cierre del día
+oil_price <- zoo(DATA$brent_crude_usd, order.by = as.Date(DATA$date, format = "%d/%m/%Y"))
+sum(oil_price <= 0, na.rm = TRUE)
+#Se sustituyen los valores nulos por 0
+oil_price[oil_price <= 0] <- NA
+#Se saca el logaritmo de los precios de petroleo
+log_oil_price <- log(oil_price)
+#Se saca la priemra diferencia del logaritmo de los precios del petroleo
+diff_log_oil_price <- diff(log(oil_price))
+#Se realiza la gráfica
+plot( cbind(log_oil_price, diff_log_oil_price) )
+```
+
+# ZIVOT-ANDREWS
+
+```{r}
+?ur.za
+# 'model = "both"' evalúa cambios tanto en constante como en tendencia (Modelo A)
+za_price_both <- ur.za(log_oil_price, model = "both", lag = NULL)
+summary(za_price_both)
+```
+
+```{r}
+# Con tendencia (Modelo B)
+za_price_trend <- ur.za(log_oil_price, model = "trend", lag = NULL)
+summary(za_price_trend)
+```
+
+```{r}
+# Con intercepto (Modelo C)
+za_price_intercept <- ur.za(log_oil_price, model = "intercept", lag = NULL)
+summary(za_price_intercept)
+```
+
+## SERIES DE TIEMPO (GASOLINA)
+
+```{r}
+fuel_ts <- ts(
+  data = DATA$petrol_usd_liter,
+  frequency = 52
+)
+
+log_fuel_ts <- log(fuel_ts)
+diff_log_fuel_ts <- diff(log_fuel_ts, lag = 1, differences = 1)
+diff_4_log_fuel_ts <- diff(log_fuel_ts, lag = 4, differences = 1)
+```
+
+# Prueba DFA
+
+## Caso A
+
+```{r}
+rezagos = 0
+# CASO A: Modelo con Tendencia y Constante [3]
+modelo_a <- ur.df(y = log_fuel_ts, type = "trend", lags = rezagos)
+summary(modelo_a)
+```
+
+## Caso B
+
+```{r}
+# CASO B: Modelo con Solo Constante (Drift)
+# Requisito para modelos ARMA
+modelo_b <- ur.df(y = log_fuel_ts, type = "drift", lags = rezagos)
+summary(modelo_b)
+```
+
+## Caso C
+
+```{r}
+# CASO C: Modelo sin Constante ni Tendencia
+# Evalúa si la serie es un Ruido Blanco puro
+modelo_c <- ur.df(y = log_fuel_ts, type = "none", lags = rezagos)
+summary(modelo_c)
+```
+
+# CON DIFERENCIACIÓN
+
+## Caso A
+
+```{r}
+rezagos = 0
+# CASO A: Modelo con Tendencia y Constante [3]
+modelo_a <- ur.df(y = diff_log_fuel_ts, type = "trend", lags = rezagos)
+summary(modelo_a)
+plot(modelo_a)
+```
+
+## Caso B
+
+```{r}
+# CASO B: Modelo con Solo Constante (Drift)
+# Requisito para modelos ARMA
+modelo_b <- ur.df(y = diff_log_fuel_ts, type = "drift", lags = rezagos)
+summary(modelo_b)
+plot(modelo_b)
+```
+
+## Caso C
+
+```{r}
+# CASO C: Modelo sin Constante ni Tendencia
+# Evalúa si la serie es un Ruido Blanco puro
+modelo_c <- ur.df(y = diff_log_fuel_ts, type = "none", lags = rezagos)
+summary(modelo_c)
+```
+
+# DFE CON REZAGOS
+
+## Caso A
+
+```{r}
+rezagos = 4
+# CASO A: Modelo con Tendencia y Constante [3]
+modelo_a <- ur.df(y = log_fuel_ts, type = "trend", lags = rezagos)
+summary(modelo_a)
+```
+
+## Caso B
+
+```{r}
+# CASO B: Modelo con Solo Constante (Drift)
+# Requisito para modelos ARMA
+modelo_b <- ur.df(y = log_fuel_ts, type = "drift", lags = rezagos)
+summary(modelo_b)
+```
+
+## Caso C
+
+```{r}
+# CASO C: Modelo sin Constante ni Tendencia
+# Evalúa si la serie es un Ruido Blanco puro
+modelo_c <- ur.df(y = log_fuel_ts, type = "none", lags = rezagos)
+summary(modelo_c)
+```
+
+# PRUEBA PP
+
+## Caso A
+
+```{r}
+pp_modelo_a <- ur.pp(log_fuel_ts, type = "Z-tau", model = "trend", lags = "short")
+summary(pp_modelo_a)
+```
+
+## Caso B
+
+```{r}
+pp_modelo_b <- ur.pp(log_fuel_ts, type = "Z-tau", model = "constant", lags = "short")
+summary(pp_modelo_b)
+```
+
+# KPSS
+
+```{r}
+kpss_trend <- ur.kpss(fuel_ts, type = "tau", lags = "short")
+summary(kpss_trend)
+
+kpss_constant <- ur.kpss(fuel_ts, type = "mu", lags = "short")
+summary(kpss_constant)
+```
+
+# CAUSALIDAD DE GRANGER (PETRÓLEO-GASOLINA)
+
+```{r}
+fuel_ts <- ts(DATA$petrol_usd_liter, frequency = 52)
+oil_ts <- ts(DATA$brent_crude_usd, frequency = 52)
+
+diff_fuel_ts <- diff(fuel_ts)
+diff_oil_ts <- diff(oil_ts)
+```
+
+```{r}
+order = 4
+grangertest(diff_fuel_ts ~ diff_oil_ts, order = order)
+summary(grangertest(diff_fuel_ts ~ diff_oil_ts, order = order))
+```
